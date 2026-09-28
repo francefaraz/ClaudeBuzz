@@ -7,7 +7,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 function isWSL() {
   try { return /microsoft/i.test(fs.readFileSync('/proc/version', 'utf8')); }
@@ -21,7 +21,16 @@ function bell(count) {
 // WSL: the wav lives on the Linux side, but playback happens via the
 // Windows host - convert to a Windows-visible path first.
 function toWindowsPath(p) {
-  return execSync(`wslpath -w "${p}"`, { encoding: 'utf8' }).trim();
+  return execFileSync('wslpath', ['-w', p], { encoding: 'utf8' }).trim();
+}
+
+// execFileSync with an argv array, never a shell string - a shell would
+// collapse the \\ in a WSL UNC path (\\wsl.localhost\...) down to \,
+// producing an invalid path that SoundPlayer reports as "file not found".
+function playWithPowerShell(winPath) {
+  execFileSync('powershell.exe',
+    ['-NoProfile', '-Command', `(New-Object Media.SoundPlayer '${winPath}').PlaySync()`],
+    { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
 }
 
 // ponytail: stderr is captured (not 'ignore'd) specifically so a playback
@@ -30,18 +39,15 @@ function toWindowsPath(p) {
 function playFile(filePath, bellCount) {
   try {
     if (process.platform === 'win32') {
-      execSync(`powershell.exe -NoProfile -Command "(New-Object Media.SoundPlayer '${filePath}').PlaySync()"`,
-        { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+      playWithPowerShell(filePath);
     } else if (process.platform === 'linux' && isWSL()) {
-      const winPath = toWindowsPath(filePath);
-      execSync(`powershell.exe -NoProfile -Command "(New-Object Media.SoundPlayer '${winPath}').PlaySync()"`,
-        { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+      playWithPowerShell(toWindowsPath(filePath));
     } else if (process.platform === 'darwin') {
-      execSync(`afplay "${filePath}"`, { stdio: ['ignore', 'ignore', 'pipe'] });
+      execFileSync('afplay', [filePath], { stdio: ['ignore', 'ignore', 'pipe'] });
     } else {
       // native Linux, no WSL interop. Try common players in order.
-      try { execSync(`paplay "${filePath}"`, { stdio: ['ignore', 'ignore', 'pipe'] }); }
-      catch (e) { execSync(`aplay "${filePath}"`, { stdio: ['ignore', 'ignore', 'pipe'] }); }
+      try { execFileSync('paplay', [filePath], { stdio: ['ignore', 'ignore', 'pipe'] }); }
+      catch (e) { execFileSync('aplay', [filePath], { stdio: ['ignore', 'ignore', 'pipe'] }); }
     }
   } catch (e) {
     logError(filePath, e);
