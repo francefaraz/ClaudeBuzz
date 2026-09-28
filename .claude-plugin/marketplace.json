@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-buzz",
+  "description": "Never lose track of Claude's open questions - distinct sound + summary when your turn ends.",
+  "owner": {
+    "name": "Shaik Muneer",
+    "url": "https://github.com/francefaraz"
+  },
+  "plugins": [
+    {
+      "name": "claude-buzz",
+      "description": "Plays a sound and summarizes any unresolved question Claude asked when a turn ends.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

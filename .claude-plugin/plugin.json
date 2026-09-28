@@ -1,0 +1,10 @@
+{
+  "name": "claude-buzz",
+  "description": "Plays a sound and surfaces any unresolved question Claude asked when a turn ends, so you never lose track mid-conversation.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Shaik Muneer"
+  },
+  "license": "MIT",
+  "keywords": ["hooks", "productivity", "notifications", "questions"]
+}
