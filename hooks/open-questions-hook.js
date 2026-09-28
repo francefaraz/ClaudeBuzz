@@ -24,26 +24,39 @@ function toWindowsPath(p) {
   return execSync(`wslpath -w "${p}"`, { encoding: 'utf8' }).trim();
 }
 
+// ponytail: stderr is captured (not 'ignore'd) specifically so a playback
+// failure leaves a diagnosable trace instead of silently falling to a bell
+// nobody notices - see logError below.
 function playFile(filePath, bellCount) {
   try {
     if (process.platform === 'win32') {
       execSync(`powershell.exe -NoProfile -Command "(New-Object Media.SoundPlayer '${filePath}').PlaySync()"`,
-        { stdio: 'ignore', windowsHide: true });
+        { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
     } else if (process.platform === 'linux' && isWSL()) {
       const winPath = toWindowsPath(filePath);
       execSync(`powershell.exe -NoProfile -Command "(New-Object Media.SoundPlayer '${winPath}').PlaySync()"`,
-        { stdio: 'ignore', windowsHide: true });
+        { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
     } else if (process.platform === 'darwin') {
-      execSync(`afplay "${filePath}"`, { stdio: 'ignore' });
+      execSync(`afplay "${filePath}"`, { stdio: ['ignore', 'ignore', 'pipe'] });
     } else {
-      // ponytail: native Linux, no WSL interop. Try common players in
-      // order; if neither is installed, fall back to the terminal bell.
-      try { execSync(`paplay "${filePath}"`, { stdio: 'ignore' }); }
-      catch (e) { execSync(`aplay "${filePath}"`, { stdio: 'ignore' }); }
+      // native Linux, no WSL interop. Try common players in order.
+      try { execSync(`paplay "${filePath}"`, { stdio: ['ignore', 'ignore', 'pipe'] }); }
+      catch (e) { execSync(`aplay "${filePath}"`, { stdio: ['ignore', 'ignore', 'pipe'] }); }
     }
   } catch (e) {
+    logError(filePath, e);
     try { bell(bellCount); } catch (e2) {}
   }
+}
+
+function logError(filePath, e) {
+  try {
+    const logDir = path.join(os.homedir(), '.config', 'claude-buzz');
+    fs.mkdirSync(logDir, { recursive: true });
+    const stderr = e.stderr ? e.stderr.toString().trim() : e.message;
+    fs.appendFileSync(path.join(logDir, 'last-error.log'),
+      `[${new Date().toISOString()}] platform=${process.platform} file=${filePath}\n${stderr}\n\n`);
+  } catch (e2) {}
 }
 
 const DEFAULT_SOUNDS = {
