@@ -5,6 +5,8 @@
 // Upgrade path: match reply content against each open question before
 // clearing it, if the crude reset proves too noisy in practice.
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { execSync } = require('child_process');
 
 function isWSL() {
@@ -12,42 +14,63 @@ function isWSL() {
   catch (e) { return false; }
 }
 
-// Windows native, or WSL calling out to the Windows host via interop -
-// both get real tone/duration control via PowerShell's console beep.
-function playTonesWindows(tones) {
-  const cmd = tones.map(([freq, ms]) => `[console]::beep(${freq},${ms})`).join(';');
-  execSync(`powershell.exe -NoProfile -Command "${cmd}"`, { stdio: 'ignore', windowsHide: true });
-}
-
-// macOS: osascript's built-in `beep N` is the native primitive - no tone
-// control, so we differentiate by beep count instead.
-function playBeepsMac(count) {
-  execSync(`osascript -e "beep ${count}"`, { stdio: 'ignore' });
-}
-
-// ponytail: native Linux (no WSL/interop) has no guaranteed audio command
-// without extra packages (beep/aplay + sound file). Falls back to the
-// terminal bell character - audible if the terminal's audio bell is on,
-// otherwise just a visual flash. Upgrade: detect `paplay`/`aplay` + a
-// system sound file and use that instead, if this ceiling proves too low.
-function playBeepsBell(count) {
+function bell(count) {
   for (let i = 0; i < count; i++) process.stdout.write('\x07');
 }
 
-function play(tones, bellCount) {
+// WSL: the wav lives on the Linux side, but playback happens via the
+// Windows host - convert to a Windows-visible path first.
+function toWindowsPath(p) {
+  return execSync(`wslpath -w "${p}"`, { encoding: 'utf8' }).trim();
+}
+
+function playFile(filePath, bellCount) {
   try {
-    if (process.platform === 'win32') return playTonesWindows(tones);
-    if (process.platform === 'darwin') return playBeepsMac(bellCount);
-    if (process.platform === 'linux') {
-      return isWSL() ? playTonesWindows(tones) : playBeepsBell(bellCount);
+    if (process.platform === 'win32') {
+      execSync(`powershell.exe -NoProfile -Command "(New-Object Media.SoundPlayer '${filePath}').PlaySync()"`,
+        { stdio: 'ignore', windowsHide: true });
+    } else if (process.platform === 'linux' && isWSL()) {
+      const winPath = toWindowsPath(filePath);
+      execSync(`powershell.exe -NoProfile -Command "(New-Object Media.SoundPlayer '${winPath}').PlaySync()"`,
+        { stdio: 'ignore', windowsHide: true });
+    } else if (process.platform === 'darwin') {
+      execSync(`afplay "${filePath}"`, { stdio: 'ignore' });
+    } else {
+      // ponytail: native Linux, no WSL interop. Try common players in
+      // order; if neither is installed, fall back to the terminal bell.
+      try { execSync(`paplay "${filePath}"`, { stdio: 'ignore' }); }
+      catch (e) { execSync(`aplay "${filePath}"`, { stdio: 'ignore' }); }
     }
   } catch (e) {
-    try { playBeepsBell(bellCount); } catch (e2) {}
+    try { bell(bellCount); } catch (e2) {}
   }
 }
 
-const doneSound = () => play([[600, 150], [900, 150]], 1);           // ascending chime: clean finish
-const questionSound = () => play([[1200, 120], [1200, 120], [1200, 120]], 3); // repeated buzz: waiting on you
+const DEFAULT_SOUNDS = {
+  done: path.join(__dirname, '..', 'sounds', 'done.wav'),
+  question: path.join(__dirname, '..', 'sounds', 'question.wav'),
+};
+
+// ponytail: config is optional and minimal - {"doneSound": "<path>",
+// "questionSound": "<path>"}. Missing file or bad JSON silently falls
+// back to bundled defaults; no validation beyond "does it exist".
+function loadUserSounds() {
+  const configPath = path.join(os.homedir(), '.config', 'claude-buzz', 'config.json');
+  try {
+    const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const resolved = {};
+    if (cfg.doneSound && fs.existsSync(cfg.doneSound)) resolved.done = cfg.doneSound;
+    if (cfg.questionSound && fs.existsSync(cfg.questionSound)) resolved.question = cfg.questionSound;
+    return resolved;
+  } catch (e) {
+    return {};
+  }
+}
+
+const sounds = { ...DEFAULT_SOUNDS, ...loadUserSounds() };
+
+const doneSound = () => playFile(sounds.done, 1);
+const questionSound = () => playFile(sounds.question, 3);
 
 let input = '';
 process.stdin.on('data', d => input += d);

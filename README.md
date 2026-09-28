@@ -21,12 +21,29 @@ Requires Node.js available as `node` on your PATH.
 
 ## Sound support by platform
 
-| Platform | Mechanism | Notes |
+Bundled sounds are synthesized WAVs (`sounds/done.wav`, `sounds/question.wav`) played through each platform's native player:
+
+| Platform | Player | Notes |
 |---|---|---|
-| Windows | PowerShell `[console]::beep` | full tone/duration control |
-| WSL | same, via `powershell.exe` interop | requires Windows interop enabled (default on WSL2) |
-| macOS | `osascript -e "beep N"` | no tone control, differentiates by beep count |
-| Linux (no WSL) | terminal bell (`\x07`) | best-effort; audible only if your terminal's audio bell is on |
+| Windows | PowerShell `Media.SoundPlayer` | WAV only |
+| WSL | same, via `powershell.exe` interop | path converted with `wslpath -w`; requires interop enabled (default on WSL2) |
+| macOS | `afplay` | WAV, MP3, AIFF, M4A all work |
+| Linux (no WSL) | `paplay` → `aplay` → terminal bell | falls back a step if a player isn't installed |
+
+## Custom sounds
+
+Drop a config file at `~/.config/claude-buzz/config.json`:
+
+```json
+{
+  "doneSound": "/path/to/your/done-sound.wav",
+  "questionSound": "/path/to/your/question-sound.wav"
+}
+```
+
+Missing file or invalid JSON silently falls back to the bundled defaults.
+On Windows, custom sounds must be `.wav` (SoundPlayer can't play MP3) —
+macOS/Linux players handle MP3/AIFF/M4A fine.
 
 ## How detection works (v0.1, naive)
 

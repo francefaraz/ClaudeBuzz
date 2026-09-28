@@ -1,7 +1,7 @@
 {
   "name": "claude-buzz",
   "description": "Plays a sound and surfaces any unresolved question Claude asked when a turn ends, so you never lose track mid-conversation.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "Shaik Muneer"
   },
